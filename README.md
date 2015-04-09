@@ -1,2 +1,0 @@
-# ReproducibleResearch
-Reproducible Research
