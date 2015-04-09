@@ -1,0 +1,96 @@
+---
+title: "Project 1"
+author: "xinrong"
+output: html_document
+---
+```{r}
+setwd("C:/Users/Xin/Dropbox/Courses/Reproducible Research")
+dt<-read.csv("activity.csv")
+
+```
+
+
+What is mean total number of steps taken per day?
+---
+
+```{r,fig.width = 5, fig.height = 3}
+require(sqldf)
+#colnames(dt)
+#str(dt$date)
+
+c<-sqldf("select distinct date,sum(steps) as totSteps from dt group by date") 
+steps<-as.numeric(c$totSteps)
+hist(steps)
+#Median steps each day
+median(steps,na.rm = TRUE)
+
+#Mean steps each day
+mean(steps,na.rm = TRUE)
+
+```
+
+
+What is the average daily activity pattern?
+---
+
+```{r,fig.width = 5, fig.height = 3,warning=FALSE}
+a<-aggregate(dt, by=list(dt$interval), FUN=mean, na.rm=TRUE)
+require(ggplot2)
+qplot(a$interval,a$steps,a,geom = "path",xlab ='interval',ylab='average steps')
+
+a2<- a[order(-a$steps),] 
+
+```
+The interval with max average steps is
+```{r}
+a2$interval[1]
+```
+The max average step is:
+```{r}
+a2$steps[1]
+```
+
+
+
+Imputing missing values  
+---
+**The imputation is based on interval average across all days**
+
+
+```{r,fig.width = 5, fig.height = 3}
+tot_missing<-sum(is.na(dt$steps))
+tot_missing
+#imput by interval average
+dt2<-sqldf("select dt.*,a.steps as m from dt left join a on dt.interval=a.interval")
+
+for (i in 1:length(dt2$steps)){
+  if(is.na(dt2$steps[i])){dt2$steps[i]<-dt2$m[i]}
+}
+
+c<-sqldf("select distinct date,sum(steps) as totSteps from dt2 group by date") 
+steps<-as.numeric(c$totSteps)
+hist(steps)
+#Median steps each day
+median(steps,na.rm = TRUE)
+
+#Mean steps each day
+mean(steps,na.rm = TRUE)
+```
+**This results is slightly different with the raw data statistics. After imputing missing value with average interval steps, mean and median are equal. The data show less bias. **
+
+
+Are there differences in activity patterns between weekdays and weekends?
+---
+
+```{r,warning=FALSE}
+dt2$weekday<-ifelse(
+   (weekdays(as.Date(dt2$date)) %in% c("Saturday","Sunday")),"weekend","weekday")
+a<-aggregate(dt2, by=list(dt2$interval,dt2$weekday), FUN=mean, na.rm=TRUE)
+colnames(a)<-c("interval","weekday","steps","v1","v2")
+
+
+library(lattice) 
+xyplot(a$steps~a$interval|a$weekday,xlab="Interval",ylab="Number of steps",layout=c(1, 2),main="",type=c("l"))
+
+#use rmd to generate md: knit2html("PA1_template.Rmd")
+```
