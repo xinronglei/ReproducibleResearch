@@ -5,7 +5,7 @@ output: html_document
 ---
 
 ```r
-setwd("C:/Users/Xin/Dropbox/Courses/Reproducible Research")
+#setwd("C:/Users/Xin/Dropbox/Courses/Reproducible Research")
 dt<-read.csv("activity.csv")
 ```
 
