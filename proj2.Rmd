@@ -1,0 +1,126 @@
+---
+title: Storm Effect Exploration
+author: "xinrong"
+date: "April, 2015"
+output: html_document
+---
+
+Data Processing
+---
+```{r}
+library(ggplot2)
+library(sqldf)
+#read in data
+setwd("C:/Users/xin/Dropbox/Courses/Reproducible Research")
+      
+raw<-read.csv("repdata-data-StormData.csv.bz2")
+#subset
+#c(COUNTY_END,COUNTYENDN,END_RANGE,END_AZI,END_LOCATI,STATEOFFIC,ZONENAMES,LATITUDE_E,LONGITUDE_,REMARKS)
+raw1<-subset(raw,select=c(BGN_DATE,STATE,EVTYPE,FATALITIES,INJURIES,PROPDMG,CROPDMG,CROPDMGEXP,PROPDMGEXP,LATITUDE,LONGITUDE,REFNUM))
+rm(raw)
+
+#reshape date
+library(lubridate)
+x1<-strsplit(as.character(raw1$BGN_DATE)," ")
+x2<-mdy(unlist(x1))
+x2<-x2[!is.na(x2)]
+raw1$Date<-x2
+storm<-subset(raw1,select=-c(BGN_DATE))
+rm(raw1)
+
+#a2<-subset(storm,select=c(EVTYPE,FATALITIES,INJURIES,PROPDMG,CROPDMG))
+#library("plyr")
+#a3<-ddply(a2, .(EVTYPE), colwise(sum))
+#a4<-sqldf("select * from a3 order by CROPDMG+PROPDMG")
+
+
+transf<-function(x){
+  if (x=='B'){y=1000000000}
+  else if (x=='M'){y=1000000}
+  else if (x=='K'){y=1000}
+  else {y=1}
+  y
+}
+storm$x<-lapply(storm$CROPDMGEXP,function(x) transf(x))
+storm$y<-lapply(storm$PROPDMGEXP,function(x) transf(x))
+storm$x<-unlist(storm$x)
+storm$y<-unlist(storm$y)
+storm$Crop<-storm$CROPDMG*storm$x
+storm$Prop<-storm$PROPDMG*storm$y
+Pop<-sqldf("select distinct EVTYPE, sum(FATALITIES) as TotFata, sum(INJURIES) as TotInju,sum(FATALITIES)+sum(INJURIES) as HelDam from storm group by EVTYPE")
+
+Eco<-sqldf("select distinct EVTYPE, sum(Prop)    as TotProp, sum(Crop)  as TotCrop, sum(Prop)+sum(Crop) as EcoDam from storm group by EVTYPE")
+
+```
+
+Result
+---
+
+Chart1.Tornado--the event that is the most harmful to population health  
+---
+Tornado costed the highest damage no mater how we measure the healthy damage.   
+
+```{r}
+#select top 1 % to make a clear plot
+quantile(Pop$HelDam, probs = c(0.99,1), na.rm = TRUE)
+quantile(Pop$TotFata, probs =c(0.99,1), na.rm = TRUE)
+quantile(Pop$TotInju, probs = c(0.99,1), na.rm = TRUE)
+Pop1<-sqldf("select * from Pop where HelDam>=1407.72 or TotFata>=208.88 or TotInju>=1327.4")
+
+```
+**Plot for events that have top 1% damage power regarding fatality, injury, and total health damage(fatality and injury combined).**
+```{r,fig.width=12, fig.height=8,warning=FALSE}
+library(ggplot2)
+q1<-qplot(HelDam,EVTYPE,data=Pop1)+xlim(1407,100000)+ylab("Event Type")+xlab("Health Damage")
+q2<-qplot(TotFata,EVTYPE,data=Pop1)+xlim(208,6000)+ylab("Event Type")+xlab("Fatality")
+q3<-qplot(TotInju,EVTYPE,data=Pop1)+xlim(1327,100000)+ylab("Event Type")+xlab("Injury")
+require(gridExtra)
+grid.arrange(q1, q2,q3, ncol=3)
+
+```
+
+Chart2. Flood, Huricane/Typhoon and Tornado--the events have the greatest economic consequences     
+---
+**Flood has the highest economic damage as well as the No 1 cause of property damage**  
+**DROUGHT caused the most server crop damage.**
+
+```{r}
+#select top 1 % to make a clear plot
+quantile(Eco$EcoDam, probs = c(0.99,1), na.rm = TRUE)
+quantile(Eco$TotProp, probs =c(0.99,1), na.rm = TRUE)
+quantile(Eco$TotCrop, probs = c(0.99,1), na.rm = TRUE)
+Eco1<-sqldf("select * from Eco where EcoDam>=8475805320 or TotProp>=5143121627 or TotCrop>=791109592")
+Eco2<-Eco1[order(-Eco1$EcoDam),]
+```
+**Plot for events that have top 1% damage power regarding property damage, crop damage, and total economic damage(crop and property combined).**
+```{r,fig.width=12, fig.height=8,warning=FALSE}
+q1<-qplot(EcoDam,EVTYPE,data=Eco1)+xlim(8382236550 ,150319678257)+ylab("Event Type")+xlab("Economic Damage")
+q2<-qplot(TotProp,EVTYPE,data=Eco1)+xlim(8382236550 ,150319678257)+ylab("Event Type")+xlab("Property Damage")
+q3<-qplot(TotCrop,EVTYPE,data=Eco1)+xlim(8382236550 ,150319678257)+ylab("Event Type")+xlab("Crop Damage")
+q3<-qplot(TotCrop,EVTYPE,data=Eco1)+xlim(1094086000,13972566000)+ylab("Event Type")+xlab("Crop Damage")
+grid.arrange(q1, q2,q3, ncol=3)
+```
+
+
+Chart3, show the economic damage by state
+---
+```{r results='asis'}
+suppressPackageStartupMessages(library(googleVis))
+library(googleVis)
+op <- options(gvis.plot.tag='chart')
+library(sqldf)
+G1<-sqldf("select distinct STATE,sum(Prop)+sum(Crop) as EcoDam from storm group by STATE ")
+
+
+GeoStates <- gvisGeoChart(data=G1, locationvar="STATE", colorvar="EcoDam",
+                          options=list(region="US", 
+                                       displayMode="regions", 
+                                       resolution="provinces",
+                                       width=600, height=400))
+GeoStates
+#plot(GeoStates) does not work
+#add results='asis',otherwise no graph
+#googlevis graph shows in the browser,but not in the rstudio preview
+#motion chart won't work in IE 11. Oh, BOTHER!!
+```
+
